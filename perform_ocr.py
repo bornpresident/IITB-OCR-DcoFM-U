@@ -6,7 +6,7 @@ import time
 import sys
 from config import output_dir, config_dir
 from detection import get_page_layout, get_equation_hocr, get_figure_hocr, get_text_hocr
-from tables import get_table_hocr
+from tables import get_table_hocr, export_sprint_model_to_onnx
 import torch
 
 def parse_boolean(b):
@@ -19,7 +19,7 @@ def simple_counter_generator(prefix="", suffix=""):
         i += 1
         yield 'p'
 
-def pdf_to_txt(orig_pdf_path, project_folder_name, lang):
+def pdf_to_txt(orig_pdf_path, project_folder_name, lang, export_tensor=False, export_onnx=False):
     outputDirIn = output_dir
     outputDirectory = outputDirIn + project_folder_name
     print('Output directory is ', outputDirectory)
@@ -61,9 +61,16 @@ def pdf_to_txt(orig_pdf_path, project_folder_name, lang):
         os.mknod(outputDirectory + "/Inds/" + 'README.md', mode=0o666)
     if not os.path.exists(outputDirectory + "/Layout_Images"):
         os.mkdir(outputDirectory + "/Layout_Images")
-    # if not os.path.exists(outputDirectory + "/CorrectorOutput"):
-    #     os.mkdir(outputDirectory + "/CorrectorOutput")
-    #     os.mknod(outputDirectory + "/CorrectorOutput/" + 'README.md', mode=0o666)
+    
+    # Create tensor outputs directory if exporting tensors
+    if export_tensor and not os.path.exists(outputDirectory + "/Tensor_Outputs"):
+        os.mkdir(outputDirectory + "/Tensor_Outputs")
+        
+    # Export ONNX model if requested
+    if export_onnx:
+        onnx_path = os.path.join(outputDirectory, "sprint_model.onnx")
+        exported_path = export_sprint_model_to_onnx(onnx_path)
+        print(f"SPRINT model exported to ONNX: {exported_path}")
 
     individualOutputDir = outputDirectory + "/Inds"
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -98,7 +105,15 @@ def pdf_to_txt(orig_pdf_path, project_folder_name, lang):
                 hocr_elements += fig_hocr
             elif cls == 5:
                 # Tables
-                tab_hocr = get_table_hocr(finalimgtoocr, outputDirectory, page, bbox, tab_cnt, lang)
+                if export_tensor:
+                    tab_hocr, tensor_output = get_table_hocr(finalimgtoocr, outputDirectory, page, bbox, tab_cnt, lang, export_tensor, False)
+                    # Save tensor output
+                    tensor_output_path = f"{outputDirectory}/Tensor_Outputs/table_{page}_{tab_cnt}.pt"
+                    torch.save(tensor_output, tensor_output_path)
+                    print(f"Tensor output saved to: {tensor_output_path}")
+                else:
+                    tab_hocr = get_table_hocr(finalimgtoocr, outputDirectory, page, bbox, tab_cnt, lang, False, False)
+                tab_cnt += 1
                 hocr_elements += tab_hocr
             else:
                 hocr = get_text_hocr(finalimgtoocr, bbox, lang)
@@ -115,14 +130,6 @@ def pdf_to_txt(orig_pdf_path, project_folder_name, lang):
         f = open(hocrfile, 'w+')
         f.write(str(soup))
 
-        # copy_command = 'cp {}/*.hocr {}/'.format(individualOutputDir, outputDirectory + "/CorrectorOutput")
-        # os.system(copy_command)
-        # correctorFolder = outputDirectory + "/CorrectorOutput"
-        # for hocrfile in os.listdir(correctorFolder):
-        #     if "hocr" in hocrfile:
-        #         htmlfile = hocrfile.replace(".hocr", ".html")
-        #         os.rename(correctorFolder + '/' + hocrfile, correctorFolder + '/' + htmlfile)
-
     # Calculate the time elapsed for entire OCR process
     endOCR = time.time()
     ocr_duration = round((endOCR - startOCR), 3)
@@ -131,8 +138,15 @@ def pdf_to_txt(orig_pdf_path, project_folder_name, lang):
 
 # Function Calls
 if __name__ == "__main__":
-    input_file= sys.argv[1]
+    input_file = sys.argv[1]
     outputsetname = sys.argv[2]
     lang = sys.argv[3]
-    ocr_only = sys.argv[4]
-    pdf_to_txt(input_file, outputsetname, lang)
+    export_tensor = False
+    export_onnx = False
+    
+    if len(sys.argv) > 4:
+        export_tensor = parse_boolean(sys.argv[4])
+    if len(sys.argv) > 5:
+        export_onnx = parse_boolean(sys.argv[5])
+        
+    pdf_to_txt(input_file, outputsetname, lang, export_tensor, export_onnx)
