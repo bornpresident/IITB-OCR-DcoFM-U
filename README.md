@@ -42,9 +42,4 @@ streamlit run viewer.py
 ## Contributions
 Contributions are welcome! Feel free to open issues or submit pull requests to improve the pipeline.
 
-## License
-This project is licensed under [insert appropriate license].
-
----
-For further questions, feel free to reach out or create an issue in this repository.
 
