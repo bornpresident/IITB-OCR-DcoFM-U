@@ -1,6 +1,8 @@
 import torch
 from PIL import Image
 from torchvision import transforms
+import torch.onnx
+import os
 
 def convert_otsl_list(otsl_list):
     final_seq = []
@@ -148,7 +150,67 @@ def get_logical_structure(img_file, device):
     # Infer
     pred = model(input_img, None, return_preds=True)
     otsl = pred['preds'][0][0]
-    return otsl
+    
+    # Return both the OTSL string and the raw prediction tensor
+    return otsl, pred
+
+# Function to export model to ONNX format
+def export_to_onnx(output_path="sprint_model.onnx", batch_size=1):
+    """
+    Export the loaded SPRINT model to ONNX format
+    Args:
+        output_path: path to save the ONNX model
+        batch_size: batch size for the model input
+    """
+    print(f"Exporting model to ONNX format: {output_path}")
+    
+    # Create a dummy input tensor with the appropriate shape
+    dummy_input = torch.randn(batch_size, 3, 128, 128, device=device)
+    
+    # Additional inputs required by the model (if any)
+    dummy_labels = None
+    
+    # Export the model
+    torch.onnx.export(
+        model,                                    # model being run
+        (dummy_input, dummy_labels),              # model input (or a tuple for multiple inputs)
+        output_path,                              # where to save the model
+        export_params=True,                       # store the trained parameter weights inside the model file
+        opset_version=12,                         # the ONNX version to export the model to
+        do_constant_folding=True,                 # whether to execute constant folding for optimization
+        input_names=['input', 'labels'],          # the model's input names
+        output_names=['output'],                  # the model's output names
+        dynamic_axes={
+            'input': {0: 'batch_size'},           # variable length axes
+            'output': {0: 'batch_size'}
+        },
+        verbose=True
+    )
+    
+    print(f"Model exported successfully to {output_path}")
+    return output_path
+
+# Function to get tensor output directly
+def get_tensor_output(img_file, device):
+    """
+    Get the raw tensor output from the model
+    Args:
+        img_file: path to the image file
+        device: device to run inference on
+    Returns:
+        raw tensor output from the model
+    """
+    # Load image
+    img = Image.open(img_file)
+    img = test_transforms(img)
+    input_img = torch.stack([img])
+    input_img = input_img.to(device)
+    
+    # Infer and return raw output
+    with torch.no_grad():
+        output = model(input_img, None, return_preds=True)
+    
+    return output
 
 # Config
 test_transforms = transforms.Compose([
@@ -160,10 +222,12 @@ model_path = 'tables/model/sprint.pt'
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Load the model
-model = torch.load(model_path, map_location = device)
+model = torch.load(model_path, map_location=device)
 model.to(device)
 model.eval()
 
-
-
-
+# If this file is run directly, export the model to ONNX
+if __name__ == "__main__":
+    print("Exporting SPRINT model to ONNX format...")
+    export_path = export_to_onnx()
+    print(f"ONNX model exported to: {export_path}")
