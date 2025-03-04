@@ -12,17 +12,22 @@ def save_uploaded_file(uploadedfile):
 
 st.title('Custom HOCR for DocFM')
 input_file = st.file_uploader('Choose your .pdf file', type="pdf")
-outputsetname = st.text_input(label= "Enter output set name  here", value="")
+outputsetname = st.text_input(label= "Enter output set name here", value="")
 language = st.text_input(label= "Enter language here", value="eng")
 langs = pytesseract.get_languages()
 avail_langs = 'Available languages are : ' + str(langs)
 st.text(avail_langs)
-if len(outputsetname) and len(input_file.name):
+
+# Add options for tensor export and ONNX export
+export_tensor = st.checkbox("Export model tensors", value=False, help="Export raw tensor outputs for tables")
+export_onnx = st.checkbox("Export model to ONNX", value=False, help="Export the SPRINT model to ONNX format")
+
+if len(outputsetname) and input_file is not None:
     go = st.button("Get OCR")
     if go:
         save_uploaded_file(input_file)
         with st.spinner('Loading...'):
-            outputDirectory = pdf_to_txt(input_dir + input_file.name, outputsetname, language)
+            outputDirectory = pdf_to_txt(input_dir + input_file.name, outputsetname, language, export_tensor, export_onnx)
 
         zipfile_name = outputDirectory + '.zip'
         zf = zipfile.ZipFile(zipfile_name, "w")
